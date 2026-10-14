@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电商经营分析 NL2SQL 智能问数</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --primary: #1a56db; --text: #1f2937;
+    --muted: #6b7280; --border: #e5e7eb; --accent: #059669;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 18px; }
+  header span { font-size: 12px; color: var(--muted); }
+  #chat { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; max-width: 980px; width: 100%; margin: 0 auto; }
+  .msg { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; animation: fadein .3s; }
+  .msg.user { background: var(--primary); color: #fff; align-self: flex-end; max-width: 70%; border: none; }
+  .msg .label { font-size: 11px; color: var(--muted); margin-bottom: 8px; letter-spacing: .5px; }
+  .msg.user .label { color: rgba(255,255,255,.7); }
+  .plan { font-size: 13px; color: var(--muted); white-space: pre-wrap; line-height: 1.6; }
+  details.step { margin-top: 10px; font-size: 13px; }
+  details.step summary { cursor: pointer; color: var(--primary); font-weight: 600; user-select: none; }
+  pre.sql { background: #0f172a; color: #7dd3fc; padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; margin-top: 8px; font-family: Consolas, monospace; }
+  .reflection { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: 12.5px; color: #92400e; }
+  table { border-collapse: collapse; margin-top: 10px; font-size: 13px; width: 100%; }
+  th, td { border: 1px solid var(--border); padding: 6px 12px; text-align: right; }
+  th { background: #f8fafc; }
+  td:first-child, th:first-child { text-align: left; }
+  .answer { white-space: pre-wrap; line-height: 1.75; font-size: 14px; }
+  .chart { width: 100%; height: 320px; margin-top: 12px; }
+  .status { font-size: 12px; color: var(--muted); animation: blink 1s infinite; }
+  .err { color: #dc2626; font-size: 13px; }
+  .empty { margin: auto; text-align: center; color: var(--muted); }
+  .empty h2 { color: var(--text); margin-bottom: 10px; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+  .samples button { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 7px 16px; font-size: 13px; cursor: pointer; color: var(--primary); }
+  .samples button:hover { background: #eff6ff; }
+  footer { padding: 14px 24px; background: var(--card); border-top: 1px solid var(--border); }
+  #inputbar { max-width: 980px; margin: 0 auto; display: flex; gap: 10px; }
+  #q { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-size: 14px; outline: none; }
+  #q:focus { border-color: var(--primary); }
+  #send { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 0 28px; font-size: 14px; cursor: pointer; }
+  #send:disabled { opacity: .5; cursor: not-allowed; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+  @keyframes blink { 50% { opacity: .4; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>电商经营分析 NL2SQL 智能问数</h1>
+  <span>Agentic NL2SQL · Schema Linking · SQL 安全校验 · Self-Reflection 自动纠错</span>
+</header>
+
+<div id="chat">
+  <div class="empty">
+    <h2>用自然语言问数据</h2>
+    <p>输入经营分析或退款归因类问题，Agent 将自动探索表结构、生成并校验 SQL、执行查询并给出归因解读</p>
+    <div class="samples">
+      <button>2026年9月的总GMV是多少？</button>
+      <button>最近7天按订单口径退款率最高的3个品类是哪些？</button>
+      <button>各营销活动的ROI分别是多少？</button>
+      <button>活动订单和自然订单的退款率对比是怎样的？</button>
+      <button>首单在2026年9月的新客，当月贡献的GMV是多少？</button>
+      <button>「满500减80」券的核销率是多少？</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div id="inputbar">
+    <input id="q" placeholder="例如：近30天各渠道的退款率对比是怎样的？" autocomplete="off">
+    <button id="send">发送</button>
+  </div>
+</footer>
+
+<script>
+const chatEl = document.getElementById('chat');
+const qEl = document.getElementById('q');
+const sendBtn = document.getElementById('send');
+let busy = false;
+
+document.querySelectorAll('.samples button').forEach(b => b.onclick = () => { qEl.value = b.textContent; ask(); });
+sendBtn.onclick = ask;
+qEl.addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function addUser(text) {
+  document.querySelector('.empty')?.remove();
+  const d = document.createElement('div');
+  d.className = 'msg user';
+  d.innerHTML = `<div class="label">你</div>${esc(text)}`;
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function addAgent() {
+  const d = document.createElement('div');
+  d.className = 'msg';
+  d.innerHTML = `<div class="label">Agent</div><div class="status">思考中…</div>`;
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return d;
+}
+
+function renderTable(cols, rows) {
+  const thead = cols.map(c => `<th>${esc(c)}</th>`).join('');
+  const tbody = rows.map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+  return `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+}
+
+function renderChart(cols, rows, mount) {
+  if (rows.length < 2 || cols.length < 2 || rows.length > 30) return;
+  const isNumeric = v => v !== null && v !== '' && !isNaN(v);
+  const labels = rows.map(r => String(r[0]));
+  const values = rows.map(r => r[1]);
+  if (!values.every(isNumeric)) return;
+  const chart = echarts.init(mount);
+  chart.setOption({
+    grid: { left: 60, right: 24, top: 40, bottom: 80 },
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: labels, axisLabel: { rotate: 30, fontSize: 11 } },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: values, itemStyle: { color: '#1a56db', borderRadius: [4, 4, 0, 0] } }],
+  });
+}
+
+async function ask() {
+  const q = qEl.value.trim();
+  if (!q || busy) return;
+  busy = true; sendBtn.disabled = true;
+  qEl.value = '';
+  addUser(q);
+  const box = addAgent();
+  const status = box.querySelector('.status');
+
+  let planDone = false;
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q }),
+    });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        let ev;
+        try { ev = JSON.parse(payload); } catch { continue; }
+
+        if (ev.type === 'plan' && !planDone) {
+          planDone = true;
+          // plan 是 dict {tables, metrics, few_shots}，渲染成可读摘要
+          let planText = '';
+          if (typeof ev.plan === 'object' && ev.plan !== null) {
+            const tNames = (ev.plan.tables || []).map(t => {
+              const m = t.match(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/i);
+              return m ? m[1] : '?';
+            }).filter(Boolean);
+            const mNames = (ev.plan.metrics || []).slice(0, 5);
+            const shotCount = (ev.plan.few_shots || []).length;
+            planText = `候选表: ${tNames.join(', ') || '(无)'}`;
+            if (mNames.length) planText += `\n匹配指标: ${mNames.join('; ')}`;
+            if (shotCount) planText += `\n参考示例: ${shotCount} 条`;
+          } else {
+            planText = String(ev.plan);
+          }
+          box.innerHTML = `<div class="label">Agent</div><div class="plan">${esc(planText)}</div><div class="status">生成 SQL 中…</div>`;
+        } else if (ev.type === 'sql') {
+          const refl = (ev.reflections || []).map(r => `<div class="reflection">🔄 ${esc(r)}</div>`).join('');
+          box.innerHTML += `
+            <details class="step" ${refl ? '' : ''}>
+              <summary>SQL 已生成（点击展开）</summary>
+              ${refl}
+              <pre class="sql">${esc(ev.sql)}</pre>
+            </details><div class="status">执行查询中…</div>`;
+        } else if (ev.type === 'result') {
+          if (!ev.ok) {
+            box.innerHTML += `<div class="err">查询执行失败：${esc(ev.error)}</div>`;
+          } else if (ev.rows.length) {
+            const chartId = 'c' + Math.random().toString(36).slice(2);
+            box.innerHTML += `
+              <details class="step open">
+                <summary>查询结果（${ev.rows.length} 行${ev.truncated ? '，已截断' : ''}）</summary>
+                ${renderTable(ev.columns, ev.rows)}
+                <div id="${chartId}" class="chart"></div>
+              </details><div class="status">生成解读中…</div>`;
+            const mount = box.querySelector('#' + chartId);
+            renderChart(ev.columns, ev.rows, mount);
+          } else {
+            box.innerHTML += `<div class="status">查询成功但无符合条件的数据</div>`;
+          }
+        } else if (ev.type === 'answer') {
+          box.querySelectorAll('.status').forEach(s => s.remove());
+          box.innerHTML += `<div class="label" style="margin-top:12px">归因解读</div><div class="answer">${esc(ev.answer)}</div>`;
+        } else if (ev.type === 'error') {
+          box.querySelectorAll('.status').forEach(s => s.remove());
+          box.innerHTML += `<div class="err">${esc(ev.message)}</div>`;
+        }
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+    }
+  } catch (e) {
+    box.innerHTML += `<div class="err">连接失败：${esc(e.message)}</div>`;
+  } finally {
+    box.querySelectorAll('.status').forEach(s => s.remove());
+    busy = false; sendBtn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

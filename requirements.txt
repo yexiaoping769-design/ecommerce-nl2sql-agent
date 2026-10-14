@@ -1,0 +1,14 @@
+langgraph
+langchain
+langchain-openai
+pydantic
+python-dotenv
+fastapi
+uvicorn[standard]
+qdrant-client
+text2vec
+sqlglot
+jieba
+rank_bm25
+pytest
+httpx

@@ -1,0 +1,19 @@
+# 密钥与环境
+.env
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 数据库（本地生成）
+db/*.sqlite
+db/*.db
+
+# 向量库本地存储
+qdrant_storage/
+
+# 评测临时产物
+eval_tmp/
+*.log

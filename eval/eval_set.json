@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "desc": "电商经营分析 NL2SQL 评测集：经营分析 15 条 + 退款归因 15 条",
+    "judge": "execution accuracy：生成 SQL 与 golden SQL 在同一库上执行，结果集归一后对比",
+    "notes": "相对时间以库内最大日期为锚点；金额 2 位小数；百分比 1 位小数"
+  },
+  "cases": [
+    {
+      "id": 1,
+      "category": "经营分析",
+      "difficulty": "simple",
+      "question": "2026年9月的总GMV是多少？",
+      "golden_sql": "SELECT ROUND(SUM(total_amount),2) FROM orders WHERE substr(create_time,1,7)='2026-09'"
+    },
+    {
+      "id": 2,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "2026年9月下单的订单，净销售额是多少？（这些订单的GMV减去这些订单发生的退款金额）",
+      "golden_sql": "WITH sep AS (SELECT order_id, total_amount FROM orders WHERE substr(create_time,1,7)='2026-09') SELECT ROUND((SELECT SUM(total_amount) FROM sep) - (SELECT COALESCE(SUM(r.refund_amount),0) FROM refunds r JOIN sep ON sep.order_id=r.order_id),2)"
+    },
+    {
+      "id": 3,
+      "category": "经营分析",
+      "difficulty": "simple",
+      "question": "2026年9月的客单价是多少？",
+      "golden_sql": "SELECT ROUND(SUM(total_amount)/COUNT(*),2) FROM orders WHERE substr(create_time,1,7)='2026-09'"
+    },
+    {
+      "id": 4,
+      "category": "经营分析",
+      "difficulty": "simple",
+      "question": "按销售额排名前5的商品是哪些？",
+      "golden_sql": "SELECT p.product_name, ROUND(SUM(i.quantity*i.unit_price),2) AS sales FROM order_items i JOIN products p ON p.product_id=i.product_id GROUP BY i.product_id, p.product_name ORDER BY sales DESC, p.product_name LIMIT 5"
+    },
+    {
+      "id": 5,
+      "category": "经营分析",
+      "difficulty": "simple",
+      "question": "销量最高的5个商品是什么？",
+      "golden_sql": "SELECT p.product_name, SUM(i.quantity) AS qty FROM order_items i JOIN products p ON p.product_id=i.product_id GROUP BY i.product_id, p.product_name ORDER BY qty DESC, p.product_name LIMIT 5"
+    },
+    {
+      "id": 6,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "各下单渠道的订单量占比是多少？（百分比）",
+      "golden_sql": "SELECT channel, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM orders),1) FROM orders GROUP BY channel ORDER BY 2 DESC, channel"
+    },
+    {
+      "id": 7,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "各会员等级用户的GMV贡献是多少？",
+      "golden_sql": "SELECT u.member_level, ROUND(SUM(o.total_amount),2) FROM orders o JOIN users u ON u.user_id=o.user_id GROUP BY u.member_level ORDER BY 2 DESC, u.member_level"
+    },
+    {
+      "id": 8,
+      "category": "经营分析",
+      "difficulty": "hard",
+      "question": "首单在2026年9月的新客，当月贡献的GMV是多少？",
+      "golden_sql": "WITH firsts AS (SELECT user_id, MIN(substr(create_time,1,7)) AS fm FROM orders GROUP BY user_id) SELECT ROUND(SUM(o.total_amount),2) FROM orders o JOIN firsts f ON f.user_id=o.user_id WHERE f.fm='2026-09' AND substr(o.create_time,1,7)='2026-09'"
+    },
+    {
+      "id": 9,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "各营销活动的ROI分别是多少？",
+      "golden_sql": "SELECT c.campaign_name, ROUND(SUM(o.total_amount)/c.budget,2) FROM campaigns c JOIN orders o ON o.campaign_id=c.campaign_id GROUP BY c.campaign_id, c.campaign_name, c.budget ORDER BY 2 DESC, c.campaign_name"
+    },
+    {
+      "id": 10,
+      "category": "经营分析",
+      "difficulty": "hard",
+      "question": "「满500减80」券的核销率是多少？（已核销张数占已领取张数的百分比）",
+      "golden_sql": "SELECT ROUND((SELECT COUNT(*) FROM coupon_usage cu JOIN coupons c ON c.coupon_id=cu.coupon_id WHERE c.coupon_name LIKE '%满500减80%')*100.0/(SELECT SUM(issued_count) FROM coupons WHERE coupon_name LIKE '%满500减80%'),1)"
+    },
+    {
+      "id": 11,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "2026年7月到9月，各月的GMV是多少？",
+      "golden_sql": "SELECT substr(create_time,1,7) AS month, ROUND(SUM(total_amount),2) FROM orders WHERE substr(create_time,1,7) BETWEEN '2026-07' AND '2026-09' GROUP BY month ORDER BY month"
+    },
+    {
+      "id": 12,
+      "category": "经营分析",
+      "difficulty": "simple",
+      "question": "各品类的销售额排名是怎样的？",
+      "golden_sql": "SELECT p.category, ROUND(SUM(i.quantity*i.unit_price),2) AS sales FROM order_items i JOIN products p ON p.product_id=i.product_id GROUP BY p.category ORDER BY sales DESC, p.category"
+    },
+    {
+      "id": 13,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "订单量最多的5个城市及各自的订单量",
+      "golden_sql": "SELECT u.city, COUNT(*) FROM orders o JOIN users u ON u.user_id=o.user_id GROUP BY u.city ORDER BY 2 DESC, u.city LIMIT 5"
+    },
+    {
+      "id": 14,
+      "category": "经营分析",
+      "difficulty": "hard",
+      "question": "复购用户（下单次数不少于2次）占全部下单用户的比例是多少？（百分比）",
+      "golden_sql": "SELECT ROUND(SUM(CASE WHEN cnt>=2 THEN 1 ELSE 0 END)*100.0/COUNT(*),1) FROM (SELECT user_id, COUNT(*) AS cnt FROM orders GROUP BY user_id)"
+    },
+    {
+      "id": 15,
+      "category": "经营分析",
+      "difficulty": "medium",
+      "question": "2026年9月各下单渠道的客单价是多少？",
+      "golden_sql": "SELECT channel, ROUND(SUM(total_amount)/COUNT(*),2) FROM orders WHERE substr(create_time,1,7)='2026-09' GROUP BY channel ORDER BY 2 DESC, channel"
+    },
+    {
+      "id": 16,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "最近7天按订单口径退款率最高的3个品类是哪些？",
+      "golden_sql": "WITH latest AS (SELECT MAX(substr(create_time,1,10)) AS today FROM orders), order_cat AS (SELECT i.order_id, p.category, ROW_NUMBER() OVER (PARTITION BY i.order_id ORDER BY i.quantity*i.unit_price DESC) AS rn FROM order_items i JOIN products p ON p.product_id=i.product_id JOIN orders o ON o.order_id=i.order_id CROSS JOIN latest WHERE substr(o.create_time,1,10) >= date(latest.today,'-6 day')) SELECT oc.category, ROUND(COUNT(DISTINCT r.order_id)*100.0/COUNT(DISTINCT oc.order_id),1) AS refund_rate FROM order_cat oc LEFT JOIN refunds r ON r.order_id=oc.order_id WHERE oc.rn=1 GROUP BY oc.category ORDER BY refund_rate DESC, oc.category LIMIT 3"
+    },
+    {
+      "id": 17,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "各品类的金额退款率是多少？（该品类退款金额占该品类GMV的百分比，订单按主品类归属）",
+      "golden_sql": "WITH order_cat AS (SELECT i.order_id, p.category, ROW_NUMBER() OVER (PARTITION BY i.order_id ORDER BY i.quantity*i.unit_price DESC) AS rn FROM order_items i JOIN products p ON p.product_id=i.product_id), cat_gmv AS (SELECT oc.category, SUM(o.total_amount) AS gmv FROM order_cat oc JOIN orders o ON o.order_id=oc.order_id WHERE oc.rn=1 GROUP BY oc.category), cat_refund AS (SELECT oc.category, SUM(r.refund_amount) AS amt FROM refunds r JOIN order_cat oc ON oc.order_id=r.order_id AND oc.rn=1 GROUP BY oc.category) SELECT g.category, ROUND(COALESCE(f.amt,0)*100.0/g.gmv,1) AS amount_refund_rate FROM cat_gmv g LEFT JOIN cat_refund f ON f.category=g.category ORDER BY amount_refund_rate DESC, g.category"
+    },
+    {
+      "id": 18,
+      "category": "退款归因",
+      "difficulty": "medium",
+      "question": "各退款原因的退款笔数分布是怎样的？",
+      "golden_sql": "SELECT reason, COUNT(*) FROM refunds GROUP BY reason ORDER BY 2 DESC, reason"
+    },
+    {
+      "id": 19,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "活动订单与自然订单的退款率对比是怎样的？（订单口径，百分比）",
+      "golden_sql": "SELECT CASE WHEN o.campaign_id IS NULL THEN '自然订单' ELSE '活动订单' END AS grp, ROUND(COUNT(DISTINCT r.order_id)*100.0/COUNT(*),1) AS refund_rate FROM orders o LEFT JOIN refunds r ON r.order_id=o.order_id GROUP BY grp ORDER BY refund_rate DESC"
+    },
+    {
+      "id": 20,
+      "category": "退款归因",
+      "difficulty": "simple",
+      "question": "退款金额最高的5笔订单及各自退款金额",
+      "golden_sql": "SELECT order_id, refund_amount FROM refunds ORDER BY refund_amount DESC, order_id LIMIT 5"
+    },
+    {
+      "id": 21,
+      "category": "退款归因",
+      "difficulty": "medium",
+      "question": "各月的退款订单数是多少？",
+      "golden_sql": "SELECT substr(create_time,1,7) AS month, COUNT(DISTINCT order_id) FROM refunds GROUP BY month ORDER BY month"
+    },
+    {
+      "id": 22,
+      "category": "退款归因",
+      "difficulty": "medium",
+      "question": "各下单渠道的退款率是多少？（订单口径，百分比）",
+      "golden_sql": "SELECT o.channel, ROUND(COUNT(DISTINCT r.order_id)*100.0/COUNT(*),1) AS refund_rate FROM orders o LEFT JOIN refunds r ON r.order_id=o.order_id GROUP BY o.channel ORDER BY refund_rate DESC, o.channel"
+    },
+    {
+      "id": 23,
+      "category": "退款归因",
+      "difficulty": "medium",
+      "question": "有退款的订单和无退款的订单，平均订单金额各是多少？",
+      "golden_sql": "SELECT CASE WHEN r.order_id IS NULL THEN '无退款' ELSE '有退款' END AS grp, ROUND(AVG(o.total_amount),2) FROM orders o LEFT JOIN (SELECT DISTINCT order_id FROM refunds) r ON r.order_id=o.order_id GROUP BY grp"
+    },
+    {
+      "id": 24,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "各会员等级用户的订单退款率是多少？（订单口径，百分比）",
+      "golden_sql": "SELECT u.member_level, ROUND(COUNT(DISTINCT r.order_id)*100.0/COUNT(*),1) AS refund_rate FROM orders o JOIN users u ON u.user_id=o.user_id LEFT JOIN refunds r ON r.order_id=o.order_id GROUP BY u.member_level ORDER BY refund_rate DESC, u.member_level"
+    },
+    {
+      "id": 25,
+      "category": "退款归因",
+      "difficulty": "simple",
+      "question": "2026年9月的退款总金额是多少？",
+      "golden_sql": "SELECT ROUND(SUM(refund_amount),2) FROM refunds WHERE substr(create_time,1,7)='2026-09'"
+    },
+    {
+      "id": 26,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "退款率最高的3个城市是哪些？（订单口径，只统计订单量不少于20单的城市，百分比）",
+      "golden_sql": "SELECT u.city, ROUND(COUNT(DISTINCT r.order_id)*100.0/COUNT(*),1) AS refund_rate FROM orders o JOIN users u ON u.user_id=o.user_id LEFT JOIN refunds r ON r.order_id=o.order_id GROUP BY u.city HAVING COUNT(*)>=20 ORDER BY refund_rate DESC, u.city LIMIT 3"
+    },
+    {
+      "id": 27,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "各品类退款订单的平均退款金额是多少？（订单按主品类归属）",
+      "golden_sql": "WITH order_cat AS (SELECT i.order_id, p.category, ROW_NUMBER() OVER (PARTITION BY i.order_id ORDER BY i.quantity*i.unit_price DESC) AS rn FROM order_items i JOIN products p ON p.product_id=i.product_id) SELECT oc.category, ROUND(AVG(r.refund_amount),2) AS avg_refund FROM order_cat oc JOIN refunds r ON r.order_id=oc.order_id WHERE oc.rn=1 GROUP BY oc.category ORDER BY avg_refund DESC, oc.category"
+    },
+    {
+      "id": 28,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "有过退款的用户占全部下单用户的比例是多少？（百分比）",
+      "golden_sql": "SELECT ROUND((SELECT COUNT(DISTINCT o.user_id) FROM orders o WHERE EXISTS (SELECT 1 FROM refunds r WHERE r.order_id=o.order_id))*100.0/(SELECT COUNT(DISTINCT user_id) FROM orders),1)"
+    },
+    {
+      "id": 29,
+      "category": "退款归因",
+      "difficulty": "medium",
+      "question": "退款金额达到500元及以上的大额退款有多少笔？合计金额多少？",
+      "golden_sql": "SELECT COUNT(*), ROUND(SUM(refund_amount),2) FROM refunds WHERE refund_amount>=500"
+    },
+    {
+      "id": 30,
+      "category": "退款归因",
+      "difficulty": "hard",
+      "question": "美妆品类中退款率最高的3个商品是哪些？（订单口径，百分比）",
+      "golden_sql": "WITH pi AS (SELECT i.order_id, i.product_id FROM order_items i JOIN products p ON p.product_id=i.product_id WHERE p.category='美妆') SELECT p.product_name, ROUND(COUNT(DISTINCT r.order_id)*100.0/COUNT(DISTINCT pi.order_id),1) AS refund_rate FROM pi JOIN products p ON p.product_id=pi.product_id LEFT JOIN refunds r ON r.order_id=pi.order_id GROUP BY pi.product_id, p.product_name ORDER BY refund_rate DESC, p.product_name LIMIT 3"
+    }
+  ]
+}
