@@ -29,33 +29,33 @@ flowchart TB
         B1[/POST /chat SSE 流式]
     end
 
-    subgraph Agent层 LangGraph
-        C[PlannerNode] --> D[SQLGeneratorNode] --> E[SQLExecutorNode]
-        E -->|出错/空结果| C
-        E -->|成功| F[ReportNode]
+    subgraph Agent层 LangGraph 四段式
+        C[Planner 节点] --> D[SQLGenerator 节点]
+        D --> E[SQLExecutor 节点]
+        E -->|成功| F[Report 节点]
+        E -->|SQL报错/空结果 & attempts<2| D
     end
 
-    subgraph Schema Linking
+    subgraph Schema Linking 单次检索
         G[text2vec-base-chinese 向量召回]
         H[BM25 关键词召回 jieba 分词]
-        I[RRF 融合]
-        J[Few-shot SQL 示例召回]
-        K[Qdrant 存储 31 知识块]
+        I[RRF 融合取 top-15]
+        J[Qdrant 31知识块<br/>表DDL+字段注释+指标定义+Few-shot SQL]
     end
 
-    subgraph SQL 安全三重防护
-        L[sqlglot 语法树校验 仅 SELECT]
+    subgraph SQL安全三重防护 串行流水线
+        L[sqlglot 语法树校验<br/>仅允许SELECT]
         M[EXPLAIN 执行计划检查]
-        N[SQLite 只读连接 mode=ro]
+        N[SQLite 只读执行<br/>mode=ro]
     end
 
     subgraph 数据层
-        O[(SQLite 8表 877订单/103退款)]
-        P[metrics.md 指标语义层 注入Prompt]
+        O[(SQLite 8表<br/>877订单/103退款)]
+        P[db/metrics.md<br/>7条歧义消解规则]
     end
 
     subgraph LLM
-        Q[Qwen-Plus 通义千问 via DashScope 兼容模式]
+        Q[Qwen-Plus via DashScope 兼容模式]
     end
 
     A -->|SSE| B
@@ -63,17 +63,18 @@ flowchart TB
     C --> G & H
     G & H --> I
     I --> J
-    J --> K
+    J --> C
+    C --> D
+    P -.-> J
     D --> Q
-    E --> L & M & N
-    L & M & N --> O
+    E --> L --> M --> N
+    N --> O
     F --> Q
-    P -.-> D
 ```
 
 ## 核心特性
 
-- **三段式 Agent 编排（LangGraph）**：Planner（Schema 检索）→ SQLGenerator（生成 SQL）→ SQLExecutor（安全校验+执行）→ Report（归因解读），出错自动回到 SQLGenerator 重试（Self-Reflection）
+- **四段式 Agent 编排（LangGraph）**：Planner（Schema 检索）→ SQLGenerator（生成 SQL）→ SQLExecutor（安全校验+执行）→ Report（归因解读），Self-Reflection 纠错回到 SQLGenerator 而非 Planner（Schema 检索只做一次，避免重复调用 LLM）
 - **Schema Linking 元数据检索**：text2vec 向量召回（语义）+ BM25 关键词召回（精确字段名）→ RRF 融合取 top-15 → Qdrant 存储 31 知识块（表 DDL + 字段注释 + 指标定义 + Few-shot SQL 示例），核心事实表保底注入不依赖检索
 - **指标语义层**：GMV / 净销售额 / 退款率（双口径）/ 客单价 / 复购率等指标口径统一定义（`db/metrics.md`），7 条歧义消解规则注入 Prompt，消除"销售额默认 GMV""退款率默认订单口径"等自然语言歧义
 - **SQL 安全三重防护**：sqlglot 语法树校验（仅允许 SELECT，拦截 DDL/DML/DROP）→ EXPLAIN 检查执行计划 → SQLite 只读连接执行（`mode=ro`，从物理上杜绝数据篡改）
@@ -182,4 +183,4 @@ Agent 有 plan → sql → result → answer 四个阶段，每个阶段都往 D
 - [x] LangGraph 四段式编排 + Qwen 接入
 - [x] 30 条评测集 + 评测脚本（SQL 可执行率 96.7%，execution accuracy 70%）
 - [x] FastAPI SSE + 前端 Demo
-- [ ] README 数字更新 + GitHub 推送（进行中）
+- [x] README 评测数字更新 + GitHub 推送
